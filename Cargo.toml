@@ -5,7 +5,14 @@ edition = "2021"
 description = "低功耗桌面组件示例：专注计时器（egui）"
 
 [dependencies]
-eframe = "0.37"
+# 精简 feature：去掉 wgpu（换 OpenGL 后端）、accesskit、wayland/x11、links 等
+# system_fonts 必须保留，否则中文会显示成方块
+eframe = { version = "0.37", default-features = false, features = [
+    "glow",
+    "default_fonts",
+    "system_fonts",
+    "winit/default",
+] }
 
 # 体积与功耗优先的发布配置：静态小体积 + 无 panic 展开
 [profile.release]

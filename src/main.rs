@@ -98,6 +98,11 @@ impl eframe::App for TimerApp {
         let ctx = ui.ctx().clone();
         let dt = ctx.input(|i| i.stable_dt).min(0.25);
 
+        // 无边框窗口：Esc 关闭（与右上角 × 等效）
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
         if self.running {
             self.remaining = (self.remaining - dt).max(0.0);
             if self.remaining <= 0.0 {
@@ -126,12 +131,41 @@ impl eframe::App for TimerApp {
 
         egui::CentralPanel::default().show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 10.0;
-            ui.add_space(4.0);
+
+            // 顶部 12px 拖动条：无边框窗口靠它移动
+            let (bar, bar_resp) =
+                ui.allocate_exact_size(egui::vec2(ui.available_width(), 12.0), egui::Sense::drag());
+            if bar_resp.drag_started() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
+
+            // 右上角关闭按钮（自绘的 ×）
+            let close_rect = egui::Rect::from_center_size(
+                egui::pos2(bar.right() - 12.0, bar.center().y),
+                egui::vec2(18.0, 18.0),
+            );
+            let close_resp =
+                ui.interact(close_rect, egui::Id::new("close_btn"), egui::Sense::click());
+            let cross_color = if close_resp.hovered() { TXT } else { DIM };
+            let c = close_rect.center();
+            let r = 4.0;
+            let cp = ui.painter();
+            cp.line_segment(
+                [c + egui::vec2(-r, -r), c + egui::vec2(r, r)],
+                egui::Stroke::new(1.2, cross_color),
+            );
+            cp.line_segment(
+                [c + egui::vec2(r, -r), c + egui::vec2(-r, r)],
+                egui::Stroke::new(1.2, cross_color),
+            );
+            if close_resp.clicked() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
 
             ui.vertical_centered(|ui| {
                 ui.label(egui::RichText::new("低功耗组件 · egui 演示").size(11.0).color(DIM));
 
-                let size = 232.0;
+                let size = 220.0;
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
                 let center = rect.center();
@@ -259,8 +293,11 @@ fn draw_arc(
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([340.0, 470.0])
-            .with_resizable(false),
+            .with_inner_size([340.0, 496.0])
+            .with_resizable(false)
+            .with_decorations(false)
+            .with_taskbar(false)
+            .with_window_level(egui::WindowLevel::AlwaysOnBottom),
         ..Default::default()
     };
 
