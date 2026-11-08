@@ -1,0 +1,16 @@
+[package]
+name = "focus-timer"
+version = "0.1.0"
+edition = "2021"
+description = "低功耗桌面组件示例：专注计时器（egui）"
+
+[dependencies]
+eframe = "0.37"
+
+# 体积与功耗优先的发布配置：静态小体积 + 无 panic 展开
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

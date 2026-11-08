@@ -1,0 +1,14 @@
+# 编译产物
+/target
+/dist
+*.exe
+*.pdb
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+
+# 系统
+Thumbs.db
+.DS_Store

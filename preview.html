@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>专注计时 · egui 版本预览</title>
+<style>
+  :root{
+    --bg:#1e1e1e; --txt:#d0d0d0; --dim:#8a8a8a; --track:#343434;
+    --work:#6aa9e9; --brk:#7fc9a0;
+    --btn:#2e2e2e; --btn-h:#3a3a3a; --btn-a:#454545; --line:#3a3a3a; --border:#4a4a4a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:#eceef1; font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    padding:32px 16px;
+  }
+  .stage{display:flex;flex-direction:column;align-items:center;gap:18px}
+  .win{
+    width:340px; height:470px; background:var(--bg); border-radius:6px; overflow:hidden;
+    box-shadow:0 10px 30px rgba(0,0,0,.18), 0 1px 2px rgba(0,0,0,.2);
+    display:flex; flex-direction:column; color:var(--txt);
+  }
+  .tb{
+    height:30px; flex:0 0 30px; display:flex; align-items:center; padding:0 10px;
+    background:#252525; border-bottom:1px solid #2c2c2c; font-size:11px; color:var(--dim);
+    user-select:none;
+  }
+  .tb .sp{flex:1}
+  .tb i{
+    display:inline-block; width:10px; height:10px; margin-left:10px; border:1px solid #555;
+    border-radius:50%; opacity:.7;
+  }
+  .body{padding:14px 16px 12px; display:flex; flex-direction:column; flex:1; min-height:0}
+  .cap{font-size:11px; color:var(--dim); text-align:center; margin-bottom:2px}
+  canvas{display:block; width:232px; height:232px; margin:4px auto 0}
+  .btns{display:flex; gap:10px; margin-top:auto; padding-top:10px}
+  button{
+    width:100px; height:32px; font:inherit; font-size:13px; color:var(--txt);
+    background:var(--btn); border:1px solid var(--border); border-radius:3px; cursor:pointer;
+    transition:background .12s;
+  }
+  button:hover{background:var(--btn-h)}
+  button:active{background:var(--btn-a)}
+  .sep{height:1px; background:var(--line); margin:14px 0 10px}
+  .row{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--txt); margin-bottom:8px}
+  .row>span:first-child{flex:0 0 52px; color:var(--dim)}
+  .row b{width:26px; text-align:right; font-weight:500; color:var(--txt)}
+  .row em{font-style:normal; color:var(--dim); font-size:11px}
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; flex:1; height:16px; background:transparent; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:3px; background:#4a4a4a; border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:12px; height:12px; margin-top:-4.5px; border-radius:50%;
+    background:#8a8a8a; border:none;
+  }
+  input[type=range]:hover::-webkit-slider-thumb{background:#a8a8a8}
+  input[type=range]:disabled{opacity:.4; cursor:default}
+  .foot{display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:auto; padding-top:8px}
+  .note{max-width:420px; font-size:12px; line-height:1.7; color:#5f5e5a; text-align:center; margin:0}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="win">
+    <div class="tb"><span>专注计时</span><span class="sp"></span><i></i><i></i><i></i></div>
+    <div class="body">
+      <div class="cap">低功耗组件 · egui 演示</div>
+      <canvas id="ring" width="232" height="232"></canvas>
+      <div class="btns">
+        <button id="toggle">开始</button>
+        <button id="reset">重置</button>
+      </div>
+      <div class="sep"></div>
+      <label class="row"><span>工作</span><input type="range" id="work" min="5" max="60" value="25"><b id="workv">25</b><em>分钟</em></label>
+      <label class="row"><span>休息</span><input type="range" id="brk" min="1" max="20" value="5"><b id="brkv">5</b><em>分钟</em></label>
+      <div class="foot"><span id="state">已休眠 · 不请求重绘</span><span id="done">今日完成 0</span></div>
+    </div>
+  </div>
+  <p class="note">egui 版本的等效预览：尺寸 340×470、深色主题、圆环自绘、状态机与 Rust 代码一致。<br>点「开始」能看到真实的倒计时与帧统计；点「暂停」后帧数归零——这就是低功耗的做法。</p>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('ring');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = 232 * dpr;
+  canvas.height = 232 * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const S = { mode:'work', running:false, remaining:25*60, work:25, brk:5, done:0 };
+  const WORK = '#6aa9e9', BRK = '#7fc9a0';
+
+  const el = {
+    toggle: document.getElementById('toggle'),
+    reset: document.getElementById('reset'),
+    work: document.getElementById('work'),
+    brk: document.getElementById('brk'),
+    workv: document.getElementById('workv'),
+    brkv: document.getElementById('brkv'),
+    state: document.getElementById('state'),
+    done: document.getElementById('done'),
+  };
+
+  const total = () => (S.mode === 'work' ? S.work : S.brk) * 60;
+
+  let raf = null, last = 0, frames = 0, secStart = 0, fps = 0;
+
+  function draw(){
+    const W = 232, C = W/2, R = W*0.44;
+    ctx.clearRect(0,0,W,W);
+
+    ctx.beginPath();
+    ctx.arc(C, C, R, 0, Math.PI*2);
+    ctx.strokeStyle = '#343434';
+    ctx.lineWidth = 10;
+    ctx.stroke();
+
+    const frac = Math.min(Math.max(1 - S.remaining/total(), 0), 1);
+    if(frac > 0.002){
+      ctx.beginPath();
+      ctx.arc(C, C, R, -Math.PI/2, -Math.PI/2 + frac*Math.PI*2);
+      ctx.strokeStyle = S.mode === 'work' ? WORK : BRK;
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    const secs = Math.ceil(S.remaining);
+    const mm = String(Math.floor(secs/60)).padStart(2,'0');
+    const ss = String(secs%60).padStart(2,'0');
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#d0d0d0';
+    ctx.font = '46px "Segoe UI",system-ui,sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mm + ':' + ss, C, C - 8);
+
+    const label = S.mode === 'work'
+      ? (S.running ? '专注中' : '准备专注')
+      : (S.running ? '休息中' : '准备休息');
+    ctx.fillStyle = '#8a8a8a';
+    ctx.font = '12px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText(label, C, C + 32);
+  }
+
+  function paintStats(){
+    el.state.textContent = S.running
+      ? '运行中 · ' + Math.round(fps) + ' 帧/秒'
+      : '已休眠 · 不请求重绘';
+    el.done.textContent = '今日完成 ' + S.done;
+  }
+
+  function finishRound(){
+    if(S.mode === 'work'){ S.done++; S.mode = 'break'; }
+    else { S.mode = 'work'; }
+    S.remaining = total();
+    stop();
+    syncControls();
+  }
+
+  function tick(ts){
+    if(!S.running) return;
+    if(!last) last = ts;
+    const dt = Math.min((ts - last)/1000, 0.25);
+    last = ts;
+
+    S.remaining -= dt;
+    if(S.remaining <= 0){ S.remaining = 0; draw(); finishRound(); return; }
+
+    frames++;
+    if(ts - secStart >= 1000){
+      fps = frames * 1000 / (ts - secStart);
+      frames = 0; secStart = ts;
+      paintStats();
+    }
+
+    draw();
+    raf = requestAnimationFrame(tick);
+  }
+
+  function start(){
+    S.running = true;
+    last = 0; frames = 0; secStart = performance.now(); fps = 0;
+    el.toggle.textContent = '暂停';
+    syncControls();
+    paintStats();
+    raf = requestAnimationFrame(tick);
+  }
+
+  function stop(){
+    S.running = false;
+    if(raf){ cancelAnimationFrame(raf); raf = null; }
+    fps = 0;
+    el.toggle.textContent = '开始';
+    syncControls();
+    paintStats();
+    draw();
+  }
+
+  function syncControls(){
+    el.work.disabled = S.running;
+    el.brk.disabled = S.running;
+  }
+
+  el.toggle.addEventListener('click', () => { S.running ? stop() : start(); });
+
+  el.reset.addEventListener('click', () => {
+    S.running = false;
+    if(raf){ cancelAnimationFrame(raf); raf = null; }
+    S.remaining = total();
+    el.toggle.textContent = '开始';
+    syncControls(); paintStats(); draw();
+  });
+
+  el.work.addEventListener('input', e => {
+    S.work = +e.target.value;
+    el.workv.textContent = S.work;
+    if(!S.running) S.remaining = total();
+    draw();
+  });
+
+  el.brk.addEventListener('input', e => {
+    S.brk = +e.target.value;
+    el.brkv.textContent = S.brk;
+    if(!S.running) S.remaining = total();
+    draw();
+  });
+
+  syncControls();
+  paintStats();
+  draw();
+})();
+</script>
+</body>
+</html>
