@@ -6,7 +6,7 @@
 //!
 //! 运行：cargo run --release
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use eframe::egui;
 
@@ -93,7 +93,9 @@ impl TimerApp {
 }
 
 impl eframe::App for TimerApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    // eframe 0.37 起，App 的入口从 update(ctx) 改为 ui(&mut Ui)
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         let dt = ctx.input(|i| i.stable_dt).min(0.25);
 
         if self.running {
@@ -108,7 +110,7 @@ impl eframe::App for TimerApp {
             if !self.idle_marked {
                 // 停下来的那一刻再画一帧，把“已休眠”显示出来，然后彻底不动
                 self.idle_marked = true;
-                ctx.request_repaint_after(Duration::from_millis(700));
+                ctx.request_repaint_after_secs(0.7);
             }
         }
 
@@ -122,7 +124,7 @@ impl eframe::App for TimerApp {
             self.last_stat = Instant::now();
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 10.0;
             ui.add_space(4.0);
 
@@ -254,7 +256,7 @@ fn draw_arc(
     painter.add(egui::Shape::line(points, stroke));
 }
 
-fn main() -> eframe::Result<()> {
+fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([340.0, 470.0])

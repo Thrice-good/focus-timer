@@ -12,3 +12,8 @@
 # 系统
 Thumbs.db
 .DS_Store
+
+# 凭证（切勿提交）
+.token*
+*.token
+.env
